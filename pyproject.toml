@@ -1,0 +1,23 @@
+[project]
+name = "Call_Me_Maybe"
+version = "0.1.0"
+description = "Root application"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic",
+    "mypy",
+    "flake8",
+    "langchain-text-splitters>=1.1.2",
+    "bm25s>=0.3.9",
+    "sentence-transformers>=5.6.0",
+    "transformers>=4.51.0",
+    "torch>=2.12.1",
+    "accelerate>=1.14.0",
+]
+
+[tool.uv.workspace]
+members = ["llm_sdk"]
+
+[tool.mypy]
+explicit_package_bases = true
