@@ -112,8 +112,12 @@ def get_files(root_dir):
 
     embedding_id = 0
     units = []
+    id = 0
+    chunk_id = {}
     for doc in Data:
         for chunk in doc["content"]:
+            doc["content"][chunk]["chunk_id"] = id
+            id += 1
             if doc["path"].endswith(".md"):
                 doc["content"][chunk]["paragraphs"] = list()
                 chunk_paragraphs = [
@@ -132,16 +136,18 @@ def get_files(root_dir):
                     )
                     units.append(p)
                     i += 1
+                    chunk_id[embedding_id] = doc["content"][chunk]
                     embedding_id += 1
             else:
                 doc["content"][chunk]["embedding_id"] = embedding_id
                 embedding_id += 1
+                chunk_id[embedding_id] = doc["content"][chunk]
                 units.append(doc["content"][chunk]["text"])
 
     with open("data/processed/data.json", "w") as f:
         json.dump(Data, f, indent=4)
 
-    return Data, List_texts, units
+    return Data, List_texts, units, chunk_id
 
 def extract_chunks(Data, candidates):
     candidates_chunks = []
@@ -152,3 +158,27 @@ def extract_chunks(Data, candidates):
                     candidates_chunks.append(doc["content"][chunk])
 
     return candidates_chunks
+
+def get_chunks(Data):
+    chunk_obj = []
+    for d in Data:
+        for chunk in d["content"]:
+            chunk_obj.append(d["content"][chunk])
+    return chunk_obj
+
+def extract_paragraphs(chunk_obj):
+    all_units = []
+    for chunk in chunk_obj:
+        parts = chunk.get("paragraphs", None)
+        if not parts:
+            all_units.append({
+                "text": chunk["text"],
+                "embedding_id": chunk["embedding_id"]
+            })
+        else:
+            for part in parts:
+                all_units.append({
+                    "text": part["text"],
+                    "embedding_id": part["embedding_id"]
+                })
+    return all_units
