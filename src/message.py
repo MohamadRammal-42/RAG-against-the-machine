@@ -1,4 +1,7 @@
-def prepare_message(question, filtered_text):
+def prepare_message(
+        question: str,
+        filtered_text: str
+        ) -> list[dict[str, str]]:
     system_instruction = """
     You are a technical documentation QA assistant.
 

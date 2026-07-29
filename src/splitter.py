@@ -1,87 +1,153 @@
 from langchain_text_splitters import (
-    MarkdownHeaderTextSplitter,
     PythonCodeTextSplitter,
-    RecursiveCharacterTextSplitter
+    MarkdownTextSplitter
 )
+from typing import Dict, Any
 from pathlib import Path
 import os
 import json
 
-def mark_down_splitter(path: str, max_chunk_size):
+
+def mark_down_splitter(path: str, max_chunk_size: int) -> Dict[str, Any]:
+    """Split a Markdown document into overlapping chunks.
+
+    Reads a Markdown file, divides it into overlapping text chunks using
+    ``MarkdownTextSplitter``, and records metadata describing the location
+    of each chunk within the original document.
+
+    Args:
+        path (str):
+            Path to the Markdown file.
+        max_chunk_size (int):
+            Maximum size of each generated chunk.
+
+    Returns:
+        Dict[str, Any]:
+            A dictionary containing the document path and metadata for each
+            generated chunk, including its text and character positions.
+    """
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    headers_to_split_on = [
-        ("#", "h1"),
-        ("##", "h2"),
-        ("###", "h3"),
-        ("####", "h4")
-    ]
-    markdown_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on
+    splitter = MarkdownTextSplitter(
+        chunk_size=max_chunk_size,
+        chunk_overlap=int(max_chunk_size * 0.35)
     )
+    chunks = splitter.split_text(text)
 
-    header_docs = markdown_splitter.split_text(text)
-    code_splitter = RecursiveCharacterTextSplitter(chunk_size=max_chunk_size, chunk_overlap=max_chunk_size * 0.15)
-    final_docs = {}
+    final_docs: dict[str, Any] = {}
     final_docs["path"] = path
     final_docs["content"] = {}
+
     chunk_number = 1
-    first_index = 0
-    last_index = 0
-    for doc in header_docs:
-        chunks = code_splitter.split_text(doc.page_content)
-        for chunk in chunks:
-            chunk_data = {}
-            chunk_data["text"] = chunk
-            chunk_data["metadata"] = doc.metadata
-            chunk_data["first_character_index"] = first_index
-            last_index += len(chunk) - 1
-            chunk_data["last_character_index"] = last_index
-            final_docs["content"][f"chunk{chunk_number}"] = chunk_data
-            chunk_data["path"] = path
-            chunk_number += 1
-            first_index = last_index + 1
-            last_index = first_index
+    search_start = 0
+
+    for chunk in chunks:
+        chunk_data: dict[str, Any] = {}
+        chunk_data["text"] = chunk
+        chunk_data["path"] = path
+        first_index = text.find(chunk, search_start)
+        if first_index == -1:
+            first_index = search_start
+        last_index = first_index + len(chunk) - 1
+        chunk_data["first_character_index"] = first_index
+        chunk_data["last_character_index"] = last_index
+        final_docs["content"][f"chunk{chunk_number}"] = chunk_data
+        chunk_number += 1
+        search_start = first_index + int(len(chunk) * 0.5)
 
     return final_docs
 
 
-def python_splitter(path: str, max_chunk_size):
+def python_splitter(path: str, max_chunk_size: int,) -> Dict[str, Any]:
+    """Split a Python source file into overlapping chunks.
+
+    Reads a Python file, divides it into overlapping code chunks using
+    ``PythonCodeTextSplitter``, and records metadata describing the location
+    of each chunk within the original source file.
+
+    Args:
+        path (str):
+            Path to the Python source file.
+        max_chunk_size (int):
+            Maximum size of each generated chunk.
+
+    Returns:
+        Dict[str, Any]:
+            A dictionary containing the document path and metadata for each
+            generated chunk, including its text and character positions.
+    """
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
 
     splitter = PythonCodeTextSplitter(
         chunk_size=max_chunk_size,
-        chunk_overlap=max_chunk_size * 0.05
+        chunk_overlap=int(max_chunk_size * 0.2)
     )
     chunks = splitter.split_text(text)
-
-    final_docs = {}
+    final_docs: dict[Any, Any] = {}
     final_docs["path"] = path
     final_docs["content"] = {}
     chunk_number = 1
-    first_index = 0
-    last_index = 0
+    search_start = 0
+
     for chunk in chunks:
-        chunk_data = {}
+        chunk_data: Any = {}
         chunk_data["text"] = chunk
+        chunk_data["path"] = path
+        first_index = text.find(chunk, search_start)
+        if first_index == -1:
+            first_index = search_start
+        last_index = first_index + len(chunk) - 1
         chunk_data["first_character_index"] = first_index
-        last_index += len(chunk) - 1
         chunk_data["last_character_index"] = last_index
         final_docs["content"][f"chunk{chunk_number}"] = chunk_data
-        chunk_data["path"] = path
         chunk_number += 1
-        first_index = last_index + 1
-        last_index = first_index
+        search_start = first_index + int(len(chunk) * 0.5)
 
     return final_docs
 
-def get_files(root_dir, max_chunk_size):
-    Data = []
-    List_texts = []
-    paths_for_py = []
-    paths_for_md = []
+
+def get_files(
+        root_dir: str,
+        max_chunk_size: int
+        ) -> (
+            tuple[list[Dict[str, Any]],
+                  list[str], list[str],
+                  Dict[int, Dict[str, Any]]]):
+    """Process supported documents and build indexing metadata.
+
+    Recursively scans a directory for Markdown and Python files, splits them
+    into chunks, generates metadata required for retrieval, and stores the
+    processed data under ``data/processed``.
+
+    Args:
+        root_dir (str):
+            Root directory containing the documents to process.
+        max_chunk_size (int):
+            Maximum size of generated chunks.
+
+    Returns:
+        tuple[
+            list[Dict[str, Any]],
+            list[str],
+            list[str],
+            Dict[int, Dict[str, Any]]
+        ]:
+            A tuple containing:
+
+            - Processed document metadata.
+            - List of chunk texts.
+            - List of embedding units.
+            - Mapping between embedding IDs and chunk metadata.
+    """
+    Data: list[dict[str, Any]] = []
+    List_texts: list[str] = []
+    paths_for_py: list[str] = []
+    paths_for_md: list[str] = []
+
+    units: list[str] = []
+    chunk_id: dict[int, dict[str, Any]] = {}
 
     for file_path in Path(root_dir).rglob("*"):
         if file_path.is_file() and file_path.suffix in {".py", ".md"}:
@@ -111,9 +177,7 @@ def get_files(root_dir, max_chunk_size):
         json.dump(List_texts, f, indent=4)
 
     embedding_id = 0
-    units = []
     id = 0
-    chunk_id = {}
     for doc in Data:
         for chunk in doc["content"]:
             doc["content"][chunk]["chunk_id"] = id
@@ -152,8 +216,27 @@ def get_files(root_dir, max_chunk_size):
 
     return Data, List_texts, units, chunk_id
 
-def extract_chunks(Data, candidates):
-    candidates_chunks = []
+
+def extract_chunks(
+        Data: list[Dict[str, Any]],
+        candidates: list[str]
+        ) -> list[Dict[str, Any]]:
+    """Retrieve chunk metadata for candidate texts.
+
+    Searches the processed document collection and returns the chunk objects
+    whose text matches the supplied candidate strings.
+
+    Args:
+        Data (list[Dict[str, Any]]):
+            Collection of processed documents.
+        candidates (list[str]):
+            Chunk texts selected by a retrieval method.
+
+    Returns:
+        list[Dict[str, Any]]:
+            Metadata describing the matching document chunks.
+    """
+    candidates_chunks: list[dict[str, Any]] = []
     for can in candidates:
         for doc in Data:
             for chunk in doc["content"]:
@@ -162,14 +245,44 @@ def extract_chunks(Data, candidates):
 
     return candidates_chunks
 
-def get_chunks(Data):
-    chunk_obj = []
+
+def get_chunks(Data: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    """Extract all chunks from the processed documents.
+
+    Flattens the processed document structure into a single list of chunk
+    dictionaries.
+
+    Args:
+        Data (list[Dict[str, Any]]):
+            Collection of processed documents.
+
+    Returns:
+        list[Dict[str, Any]]:
+            List containing every chunk in the dataset.
+    """
+    chunk_obj: list[dict[str, Any]] = []
     for d in Data:
         for chunk in d["content"]:
             chunk_obj.append(d["content"][chunk])
     return chunk_obj
 
-def extract_paragraphs(chunk_obj):
+
+def extract_paragraphs(
+        chunk_obj: list[Dict[str, Any]]
+        ) -> list[Dict[str, Any]]:
+    """Extract embedding units from document chunks.
+
+    For Markdown chunks, each paragraph is treated as an individual embedding
+    unit. For Python chunks, the entire chunk is treated as a single unit.
+
+    Args:
+        chunk_obj (list[Dict[str, Any]]):
+            List of processed document chunks.
+
+    Returns:
+        list[Dict[str, Any]]:
+            List of embedding units containing text and embedding IDs.
+    """
     all_units = []
     for chunk in chunk_obj:
         parts = chunk.get("paragraphs", None)
@@ -186,7 +299,23 @@ def extract_paragraphs(chunk_obj):
                 })
     return all_units
 
-def text_filter(filtered_chunk, k):
+
+def text_filter(filtered_chunk: list[Dict[str, Any]], k: int) -> str:
+    """Concatenate the text of the top retrieved chunks.
+
+    Builds the context passed to the language model by joining the text from
+    the first ``k`` retrieved chunks.
+
+    Args:
+        filtered_chunk (list[Dict[str, Any]]):
+            Ranked list of retrieved chunks.
+        k (int):
+            Number of chunks to include.
+
+    Returns:
+        str:
+            Concatenated text of the selected chunks.
+    """
     filtered_text = ""
     for chunk in filtered_chunk[:k]:
         filtered_text += chunk["text"]
